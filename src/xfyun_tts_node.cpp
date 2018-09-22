@@ -29,7 +29,6 @@
 
 #include <string>
 #include <iostream>
-#include <fstream>
 
 #include <alsa/asoundlib.h>
 
@@ -38,22 +37,10 @@
 #include <boost/thread.hpp>
 
 #include <limits.h>
-  
-#define MAX_SIZE (PATH_MAX+1)
 
 using namespace std;
 
-#define ALSA_MAX_BUF_SIZE 65535
-  
-using namespace std;
-using std::string;
-using std::fstream;
-
-bool interrupt = true;
-boost::thread* g_play_thread;
 ros::Publisher speech_file_pub;
-
-int set_pcm_play(const char* filename);
 
 /* wav音频头部格式 */
 typedef struct _wave_pcm_hdr
@@ -175,16 +162,6 @@ int text_to_speech(const char* src_text, const char* des_path, const char* param
 	return ret;
 }
 
-void getCurrentAbsolutePath(char* current_absolute_path)
-{
-	if (NULL == realpath("./", current_absolute_path))
-	{
-		printf("***Error***");
-		exit(-1);
-	}
-}
-
-
 void tts_callback(const std_msgs::String::ConstPtr& msg)
 {
 	const char* text;
@@ -233,10 +210,6 @@ void tts_callback(const std_msgs::String::ConstPtr& msg)
 	}
 }
 
-string nav_status = "";
-boost::mutex nav_status_mutex_; 
-int is_broadcasting = 0;
-
 int main(int argc, char* argv[])
 {
 	int         ret                  = MSP_SUCCESS;
@@ -252,7 +225,6 @@ int main(int argc, char* argv[])
 	}
 	else
 	{
-		g_play_thread =NULL;
 		ros::init(argc, argv, "xfyun_tts_node");
 		ros::NodeHandle node_handle;
 
@@ -265,170 +237,3 @@ int main(int argc, char* argv[])
 
 	return 0;
 }
-
-int set_pcm_play(const char* filename)
-{
-	int rc;
-	int ret;
-	int size = 100;
-	snd_pcm_t* handle; //PCI设备句柄
-	snd_pcm_hw_params_t* params;//硬件信息和PCM流配置
-	snd_mixer_t *mixer;
-	snd_mixer_elem_t *pcm_element;
-	unsigned int val;
-	int dir = 0;
-	snd_pcm_uframes_t frames, periodsize;
-	char *buffer;
-	int nread;
-	interrupt = false;
-
-	FILE *fp = fopen(filename, "rb");
-	if (fp == NULL)
-	{
-		ROS_ERROR("No such file!");
-		return 0;
-	}
-	else
-	{
-		ROS_INFO("playing......");
-	}
-	wave_pcm_hdr wavHeader;
-	nread = fread(&wavHeader, 1, sizeof(wave_pcm_hdr), fp);
-
-	int channels = wavHeader.channels;
-	int frequency = wavHeader.samples_per_sec;
-	int bit = wavHeader.bits_per_sample;
-	int datablock = wavHeader.block_align;
-	
-	rc=snd_pcm_open(&handle, "default", SND_PCM_STREAM_PLAYBACK, 0);
-	if(rc < 0)
-	{
-			perror("\nopen PCM device failed:");
-			exit(1);
-	}
-	snd_pcm_hw_params_alloca(&params); //分配params结构体
-	if(rc < 0)
-	{
-			perror("\nsnd_pcm_hw_params_alloca:");
-			exit(1);
-	}
-		rc=snd_pcm_hw_params_any(handle, params);//初始化params
-	if(rc < 0)
-	{
-			perror("\nsnd_pcm_hw_params_any:");
-			exit(1);
-	}
-	rc=snd_pcm_hw_params_set_access(handle, params, SND_PCM_ACCESS_RW_INTERLEAVED); //初始化访问权限
-	if(rc < 0)
-	{
-			perror("\nsed_pcm_hw_set_access:");
-			exit(1);
-
-	}
-	//采样位数
-	switch(bit / 8)
-	{
-	case 1:
-		snd_pcm_hw_params_set_format(handle, params, SND_PCM_FORMAT_U8);
-		break ;
-	case 2:
-		snd_pcm_hw_params_set_format(handle, params, SND_PCM_FORMAT_S16_LE);
-		break ;
-	case 3:
-			snd_pcm_hw_params_set_format(handle, params, SND_PCM_FORMAT_S24_LE);
-		break ;
-		ROS_INFO("ddd");
-	}
-	rc = snd_pcm_hw_params_set_channels(handle, params, channels); //设置声道,1表示单声>道，2表示立体声
-	if(rc<0)
-	{
-			perror("\nsnd_pcm_hw_params_set_channels:");
-			exit(1);
-	}
-	val = frequency;
-	rc = snd_pcm_hw_params_set_rate_near(handle, params, &val, &dir); //设置>频率
-	if(rc < 0)
-	{
-			perror("\nsnd_pcm_hw_params_set_rate_near:");
-			exit(1);
-	}
-	snd_pcm_hw_params_get_buffer_size_max(params, &frames);	
-	frames = frames < ALSA_MAX_BUF_SIZE ? frames : ALSA_MAX_BUF_SIZE;
-	rc = snd_pcm_hw_params_set_buffer_size_near(handle, params, &frames);
-	snd_pcm_hw_params_get_period_size_min(params, &periodsize, NULL);
-	if(!periodsize)
-	{
-		periodsize = size / 2;
-	}
-	rc = snd_pcm_hw_params_set_period_size_near(handle, params, &periodsize, NULL);
-	rc = snd_pcm_hw_params(handle, params);
-	if(rc<0)
-	{
-		perror("\nsnd_pcm_hw_params: ");
-		exit(1);
-	}
-	rc=snd_pcm_hw_params_get_period_size(params, &frames, &dir); /*获取周期长度*/
-	snd_mixer_open(&mixer, 1);
-	snd_mixer_attach(mixer, "default");
-	snd_mixer_selem_register(mixer, NULL, NULL);
-	snd_mixer_load(mixer);
-	for(pcm_element = snd_mixer_first_elem(mixer); pcm_element; pcm_element = snd_mixer_elem_next(pcm_element))
-	{
-		if(snd_mixer_elem_get_type(pcm_element) == SND_MIXER_ELEM_SIMPLE && snd_mixer_selem_is_active(pcm_element))
-		{
-			if(!strcmp(snd_mixer_selem_get_name(pcm_element), "Master"))
-			{
-				snd_mixer_selem_set_playback_volume_range(pcm_element, 0, 100);
-				snd_mixer_selem_set_playback_volume_all(pcm_element, (long)100);
-			}
-		}
-	}
-	if(rc<0)
-	{
-			perror("\nsnd_pcm_hw_params_get_period_size:");
-			exit(1);
-	}
-	frames = 32;
-	size = frames * datablock; /*4 代表数据快长度*/
-	buffer =(char*)malloc(size);
-	fseek(fp, 100, SEEK_SET); //定位歌曲到数据区
-	while (ros::ok() && !interrupt)
-	{
-		memset(buffer, 0, sizeof(buffer));
-		ret = fread(buffer, 1, size, fp);
-		if(ret == 0)
-		{
-			break;
-		}
-		// 写音频数据到PCM设备
-		while((ret = snd_pcm_writei(handle, buffer, frames))<0)
-		{
-			usleep(2000);
-			if (ret == -EPIPE)
-			{
-				/* EPIPE means underrun */
-				fprintf(stderr, "underrun occurred\n");
-				//完成硬件参数设置，使设备准备好
-				snd_pcm_prepare(handle);
-			}
-			else if (ret < 0)
-			{
-				fprintf(stderr, "error from writei: %s\n", snd_strerror(ret));
-			}
-		}
-	}
-	snd_pcm_drain(handle);
-	snd_pcm_close(handle);
-	snd_mixer_close(mixer);
-	free(buffer);
-	fclose(fp);
-	ROS_INFO("stop");
-
-	nav_status_mutex_.lock();
-	nav_status = "";
-	is_broadcasting = 0;
-	nav_status_mutex_.unlock();
-
-	return 0;
-}
-
