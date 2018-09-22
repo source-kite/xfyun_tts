@@ -25,6 +25,7 @@
 #include<linux/soundcard.h>
 #include<fcntl.h>
 #include<sys/ioctl.h>
+#include<openssl/md5.h>
 
 #include <string>
 #include <iostream>
@@ -190,16 +191,26 @@ void tts_callback(const std_msgs::String::ConstPtr& msg)
 	int         ret                  = MSP_SUCCESS;
   	const char* session_begin_params = "engine_type = local,voice_name=xiaoyan, text_encoding = UTF8, tts_res_path = fo|/home/hcl/res/tts/xiaoyan.jet;fo|/home/hcl/res/tts/common.jet, sample_rate = 16000, speed = 50, volume = 50, pitch = 50, rdn = 2"; 
 	
-	const int speech_file_name_size = 20;
+	const int speech_file_name_size = 32;
 	char speech_file_name[ speech_file_name_size + 1 ];
-	char speech_file_dir[ ] = "/tmp/voice_materials/"; 
+	// char speech_file_dir[ ] = "~/Music/voice_materials/speech/"; 
+	char speech_file_dir[ ] = "/home/hcl/Music/voice_materials/speech/"; 
 	char speech_file_path[ strlen( speech_file_dir ) + speech_file_name_size + strlen( ".wav" ) + 1 ];
 
 	text = msg->data.c_str();
 
 	/* Generate speech file name. */
-    strncpy( speech_file_name, text, 20 );
-	speech_file_name[ speech_file_name_size ] = 0;
+	{
+		unsigned char md5_value[ 16 ];
+		
+		MD5( (const unsigned char*)text, strlen( text ), md5_value );
+
+		for( int i = 0; i < 16; i ++ )
+		{
+			sprintf( &speech_file_name[ i*2 ], "%02x", md5_value[ i ] );
+		}
+		speech_file_name[ speech_file_name_size ] = 0;
+	}
 	
 	sprintf( speech_file_path, "%s%s%s", speech_file_dir, speech_file_name, ".wav" );
 
@@ -245,7 +256,7 @@ int main(int argc, char* argv[])
 		ros::init(argc, argv, "xfyun_tts_node");
 		ros::NodeHandle node_handle;
 
-		ros::Subscriber sub = node_handle.subscribe("tts", 1, tts_callback);
+		ros::Subscriber sub = node_handle.subscribe("xfyun_tts", 1, tts_callback);
 
 		speech_file_pub = node_handle.advertise<std_msgs::String>("VoicePlay", 1 );
 

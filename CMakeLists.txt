@@ -156,6 +156,7 @@ target_link_libraries(${PROJECT_NAME}_node
   ${catkin_LIBRARIES}
   ${CMAKE_CURRENT_SOURCE_DIR}/lib/libmsc.so -ldl -pthread
   -lasound
+  -lcrypto
 )
 
 #############
