@@ -37,6 +37,7 @@
 #include <boost/thread.hpp>
 
 #include <limits.h>
+#include "xfyun_tts/SpeechSynthesis.h"
 
 using namespace std;
 
@@ -79,7 +80,36 @@ wave_pcm_hdr default_wav_hdr =
 	{'d', 'a', 't', 'a'},
 	0  
 };
+
+static int text_to_speech(const char* src_text, const char* des_path, const char* params);
+
 /* 文本合成 */
+bool SpeechSynthesis( 	xfyun_tts::SpeechSynthesis::Request &request,
+						xfyun_tts::SpeechSynthesis::Response &response )
+{
+	int         ret                  = MSP_SUCCESS;
+  	const char* session_begin_params = "engine_type = local,voice_name=xiaoyan, text_encoding = UTF8, tts_res_path = fo|/home/hcl/res/tts/xiaoyan.jet;fo|/home/hcl/res/tts/common.jet, sample_rate = 16000, speed = 50, volume = 50, pitch = 50, rdn = 2"; 
+	const char speech_file_path[] = "/tmp/tts_file.wav";
+
+	printf("Start to synthesis: %s\n", request.text.c_str() );
+
+	ret = text_to_speech( request.text.c_str(), speech_file_path, session_begin_params );
+	response.file_path = speech_file_path;
+
+	if (MSP_SUCCESS != ret)
+	{
+		printf("Failed to synthesis: %d\n", ret );
+		return false;
+	}
+	else
+	{
+		printf("Succeed to synthesis\n" );
+		return true;
+	}
+
+	return false;
+}
+
 int text_to_speech(const char* src_text, const char* des_path, const char* params)
 {
 	int          ret          = -1;
@@ -162,54 +192,6 @@ int text_to_speech(const char* src_text, const char* des_path, const char* param
 	return ret;
 }
 
-void tts_callback(const std_msgs::String::ConstPtr& msg)
-{
-	const char* text;
-	int         ret                  = MSP_SUCCESS;
-  	const char* session_begin_params = "engine_type = local,voice_name=xiaoyan, text_encoding = UTF8, tts_res_path = fo|/home/hcl/res/tts/xiaoyan.jet;fo|/home/hcl/res/tts/common.jet, sample_rate = 16000, speed = 50, volume = 50, pitch = 50, rdn = 2"; 
-	
-	const int speech_file_name_size = 32;
-	char speech_file_name[ speech_file_name_size + 1 ];
-	// char speech_file_dir[ ] = "~/Music/voice_materials/speech/"; 
-	char speech_file_dir[ ] = "/home/hcl/Music/voice_materials/speech/"; 
-	char speech_file_path[ strlen( speech_file_dir ) + speech_file_name_size + strlen( ".wav" ) + 1 ];
-
-	text = msg->data.c_str();
-
-	/* Generate speech file name. */
-	{
-		unsigned char md5_value[ 16 ];
-		
-		MD5( (const unsigned char*)text, strlen( text ), md5_value );
-
-		for( int i = 0; i < 16; i ++ )
-		{
-			sprintf( &speech_file_name[ i*2 ], "%02x", md5_value[ i ] );
-		}
-		speech_file_name[ speech_file_name_size ] = 0;
-	}
-	
-	sprintf( speech_file_path, "%s%s%s", speech_file_dir, speech_file_name, ".wav" );
-
-	printf( "%s", speech_file_path );
-
-	/* 合成语音文件到系统临时目录 */
-	ret = text_to_speech(text, speech_file_path, session_begin_params);
-
-	if (MSP_SUCCESS != ret)
-	{
-		printf("text_to_speech failed, error code: %d.\n", ret);
-	}
-	else
-	{
-		std_msgs::String _speech_file;
-
-		_speech_file.data = speech_file_path;
-
-		speech_file_pub.publish( _speech_file );
-	}
-}
-
 int main(int argc, char* argv[])
 {
 	int         ret                  = MSP_SUCCESS;
@@ -228,7 +210,7 @@ int main(int argc, char* argv[])
 		ros::init(argc, argv, "xfyun_tts_node");
 		ros::NodeHandle node_handle;
 
-		ros::Subscriber sub = node_handle.subscribe("xfyun_tts", 1, tts_callback);
+		ros::ServiceServer service = node_handle.advertiseService( "SpeechSynthesis", SpeechSynthesis );
 
 		speech_file_pub = node_handle.advertise<std_msgs::String>("VoicePlay", 1 );
 
