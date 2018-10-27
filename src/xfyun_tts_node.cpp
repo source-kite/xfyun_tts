@@ -88,7 +88,8 @@ bool SpeechSynthesis( 	xfyun_tts::SpeechSynthesis::Request &request,
 						xfyun_tts::SpeechSynthesis::Response &response )
 {
 	int         ret                  = MSP_SUCCESS;
-  	const char* session_begin_params = "engine_type = local,voice_name=xiaoyan, text_encoding = UTF8, tts_res_path = fo|/home/hcl/res/tts/xiaoyan.jet;fo|/home/hcl/res/tts/common.jet, sample_rate = 16000, speed = 50, volume = 50, pitch = 50, rdn = 2"; 
+ 	const char* session_begin_params = "voice_name=xiaoyan, text_encoding = UTF8, sample_rate = 16000, speed = 50, volume = 50, pitch = 50, rdn = 2"; 
+
 	const char speech_file_path[] = "/tmp/tts_file.wav";
 
 	printf("Start to synthesis: %s\n", request.text.c_str() );
